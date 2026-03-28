@@ -1,0 +1,9 @@
+include include/*.h
+include src/*.c
+include src/*.h
+include Makefile
+include README_CN.md
+include README.md
+recursive-include kv_db *.py
+global-exclude *.o
+global-exclude *.so

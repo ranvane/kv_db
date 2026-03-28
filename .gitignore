@@ -205,3 +205,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+kv_db.egg-info
+python/__pycache__
+stress_test_db

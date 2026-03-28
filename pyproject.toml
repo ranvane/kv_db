@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kv-db"
+version = "1.0.0"
+authors = [
+  { name="KVDB Team", email="team@kvdb.io" },
+]
+description = "A high-performance key-value database with Python bindings"
+readme = "README_CN.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: C",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Database",
+]
+dependencies = []
+
+[project.urls]
+"Homepage" = "https://github.com/ranvane/kv_db"
+"Bug Tracker" = "https://github.com/ranvane/kv_db/issues"
+
+[tool.setuptools]
+packages = ["kv_db"]
+
+[tool.setuptools.package-data]
+kv_db = ["libkvdb.so"]
