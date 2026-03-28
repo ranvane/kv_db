@@ -1,4 +1,5 @@
 # Byte-compiled / optimized / DLL files
+*.dat
 __pycache__/
 *.py[codz]
 *$py.class
@@ -208,3 +209,5 @@ __marimo__/
 kv_db.egg-info
 python/__pycache__
 stress_test_db
+test_db/active.dat
+src/kv_store.o

@@ -3,7 +3,7 @@
 
 #include "kv_store.h"
 #include "kv_compat.h"
-#include <stdatomic.h>
+#include "atomic_compat.h"
 #include <stdio.h>
 
 /**
