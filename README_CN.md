@@ -90,3 +90,9 @@ make test
 # 运行 Python 接口验证 (安装后)
 python3 tests/verify_wheel.py
 ```
+## GitHub Actions编译与测试 (开发者)
+只需将代码推送到 GitHub 并打上版本标签（如 git tag v1.0.1 && git push origin v1.0.1 ），GitHub Actions 将会自动：
+
+1. 在 Windows 虚拟机上启动 vcpkg 安装依赖。
+2. 使用 setuptools 自动调用 MSVC 编译器完成 src/kv_store.c 的编译。
+3. 生成包含 libkvdb.so (即 DLL) 的 Windows Wheel 包并发布到 Release。

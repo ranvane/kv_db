@@ -26,21 +26,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 使用 Python 3.11+ 运行工作流，支持最新版本的 cibuildwheel
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
+
+      # Windows 下通过 vcpkg 安装 zlib
+      - name: Install zlib (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          vcpkg install zlib:x64-windows
+          # 将 vcpkg 安装路径添加到系统环境变量，以便 setup.py 能够找到 zlib.lib 和 zlib.h
+          echo "INCLUDE=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\include" >> $GITHUB_ENV
+          echo "LIB=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build cibuildwheel
+          pip install build cibuildwheel==2.21.3
 
       - name: Build wheels
         run: python -m cibuildwheel --output-dir wheelhouse
         env:
+          # CIBW 配置说明：
+          # 1. 忽略不常用的架构，只构建主流 64 位版本，加快构建速度
           CIBW_SKIP: "*-win32 *_i686 *_s390x *_ppc64le"
+          
+          # 2. Linux 下安装 zlib 依赖
           CIBW_BEFORE_ALL_LINUX: "yum install -y zlib-devel || apk add zlib-dev || apt-get install -y zlib1g-dev"
+          
+          # 3. Windows 下确保编译环境能找到 zlib
+          # cibuildwheel 默认不完全继承系统环境变量，需显式传递
+          CIBW_ENVIRONMENT_WINDOWS: "INCLUDE='$VCPKG_INSTALLATION_ROOT\\installed\\x64-windows\\include' LIB='$VCPKG_INSTALLATION_ROOT\\installed\\x64-windows\\lib'"
 
       # 上传构建好的 .whl 文件作为临时产物
       - uses: actions/upload-artifact@v4
@@ -54,6 +72,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Build sdist
         run: pipx run build --sdist
