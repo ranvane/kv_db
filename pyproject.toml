@@ -28,4 +28,4 @@ dependencies = []
 packages = ["kv_db"]
 
 [tool.setuptools.package-data]
-kv_db = ["libkvdb.so"]
+kv_db = ["*.so", "*.dll", "*.dylib"]

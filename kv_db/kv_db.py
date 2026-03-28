@@ -24,6 +24,7 @@ KV 数据库 Python 绑定接口模块
 
 import ctypes
 import os
+import sys
 import json
 from enum import IntEnum
 
@@ -185,17 +186,28 @@ class KVDB:
             >>> # 使用绝对路径
             >>> db = KVDB("/home/user/kvdb_data")
         """
-        # 构建动态库的绝对路径
-        # 先在当前包目录下查找 libkvdb.so
-        lib_name = "libkvdb.so"
+        # 跨平台动态库名称适配
+        if os.name == 'nt':  # Windows
+            lib_name = "libkvdb.dll"
+        elif sys.platform == 'darwin':  # macOS
+            lib_name = "libkvdb.dylib"
+        else:  # Linux / POSIX
+            lib_name = "libkvdb.so"
+
         current_dir = os.path.dirname(os.path.abspath(__file__))
         lib_path = os.path.join(current_dir, lib_name)
         
-        # 如果当前包目录没找到（开发环境），尝试向上级目录查找
+        # 兼容性处理：有时 C 库可能统一命名为 .so (如在我们的 BuildExt 中)
         if not os.path.exists(lib_path):
-            lib_path = os.path.join(current_dir, "..", lib_name)
+            fallback_path = os.path.join(current_dir, "libkvdb.so")
+            if os.path.exists(fallback_path):
+                lib_path = fallback_path
+            else:
+                # 尝试开发环境下的路径
+                dev_path = os.path.join(current_dir, "..", lib_name)
+                if os.path.exists(dev_path):
+                    lib_path = dev_path
         
-        # 如果还是没找到，抛出更友好的错误
         if not os.path.exists(lib_path):
             raise OSError(f"找不到核心共享库 {lib_name}。请确保已编译项目或正确安装包。")
         

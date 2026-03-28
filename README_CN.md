@@ -13,6 +13,23 @@
 - **数据压缩**：集成 zlib 压缩，有效节省磁盘空间。
 - **自动 CI/CD**：集成 GitHub Actions，自动构建各平台的 Wheel 安装包。
 
+## 系统架构说明
+
+### 1. 存储布局
+数据库使用追加写的 `active.dat` 文件记录所有操作。每条记录由 Header、Key 和 Value 组成。
+
+### 2. 内存索引
+使用 `uthash` 库实现的哈希表。键为字符串，值为包含文件偏移量和记录大小的结构体。
+
+### 3. 跨平台兼容层
+项目引入了 `include/kv_compat.h`，统一了 Windows 和 POSIX 平台的锁机制（Mutex/RWLock）和文件 I/O（pread/fsync/mkdir）。在 Windows 上使用 `SRWLOCK` 和 `CRITICAL_SECTION` 以获得最佳性能。
+
+### 4. 打包机制
+项目使用 `pyproject.toml` 和 `setup.py` 进行打包。构建过程使用 `setuptools.Extension` 自动处理跨平台编译器调用：
+- **Linux/macOS**: 使用 GCC/Clang 链接 `zlib` 和 `pthread`。
+- **Windows**: 使用 MSVC 链接 `zlib.lib`。
+编译产物会根据平台自动识别命名（`.so`, `.dll`, `.dylib`），Python 封装层具备自动搜索和加载能力。
+
 ## 快速安装
 
 ### 1. 准备工作
