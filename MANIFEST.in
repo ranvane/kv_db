@@ -1,6 +1,6 @@
-include include/*.h
-include src/*.c
-include src/*.h
+recursive-include include *.h
+recursive-include src *.c
+recursive-include src *.h
 include Makefile
 include README_CN.md
 include README.md

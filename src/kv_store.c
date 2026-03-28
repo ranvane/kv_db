@@ -437,9 +437,9 @@ kv_db_t* kv_open(const char *path) {
 
     // ==================== 初始化同步锁 ====================
     // 索引读写锁：支持并发读，写时独占
-    pthread_rwlock_init(&db->index_lock, NULL);
+    kv_rwlock_init(&db->index_lock);
     // 写入互斥锁：确保顺序写入文件
-    pthread_mutex_init(&db->write_lock, NULL);
+    kv_mutex_init(&db->write_lock);
 
     // ==================== 设置默认持久化策略 ====================
     // 时间阈值：10 秒自动同步一次
@@ -570,8 +570,8 @@ void kv_close(kv_db_t *db) {
     }
 
     // ==================== 销毁同步锁 ====================
-    pthread_rwlock_destroy(&db->index_lock);
-    pthread_mutex_destroy(&db->write_lock);
+    kv_rwlock_destroy(&db->index_lock);
+    kv_mutex_destroy(&db->write_lock);
     
     // ==================== 释放数据库结构 ====================
     free(db->path);
@@ -666,7 +666,7 @@ static bool kv_set_internal(kv_db_t *db, const char *key, kv_value_t value) {
     }
 
     // ==================== 更新内存索引 ====================
-    pthread_rwlock_wrlock(&db->index_lock);
+    kv_rwlock_wrlock(&db->index_lock);
     index_node_t *node;
     HASH_FIND_STR(db->index, key, node);
     if (!node) {
@@ -679,7 +679,7 @@ static bool kv_set_internal(kv_db_t *db, const char *key, kv_value_t value) {
     node->entry.offset = offset;
     node->entry.size = sizeof(header) + key_len + write_len;
     node->entry.timestamp = header.timestamp;
-    pthread_rwlock_unlock(&db->index_lock);
+    kv_rwlock_unlock_wr(&db->index_lock);
 
     // ==================== 清理临时缓冲区 ====================
     if (write_buf != val_buf) free(write_buf);  // 释放压缩缓冲区（如果有）
@@ -752,9 +752,9 @@ bool kv_set(kv_db_t *db, const char *key, kv_value_t value) {
     }
     
     // ==================== 非事务模式：直接写入 ====================
-    pthread_mutex_lock(&db->write_lock);
+    kv_mutex_lock(&db->write_lock);
     bool res = kv_set_internal(db, key, value);
-    pthread_mutex_unlock(&db->write_lock);
+    kv_mutex_unlock(&db->write_lock);
     return res;
 }
 
@@ -792,16 +792,16 @@ bool kv_set(kv_db_t *db, const char *key, kv_value_t value) {
  */
 bool kv_get(kv_db_t *db, const char *key, kv_value_t *value) {
     // ==================== 查找内存索引 ====================
-    pthread_rwlock_rdlock(&db->index_lock);
+    kv_rwlock_rdlock(&db->index_lock);
     index_node_t *node;
     HASH_FIND_STR(db->index, key, node);
     if (!node) {
-        pthread_rwlock_unlock(&db->index_lock);
+        kv_rwlock_unlock_rd(&db->index_lock);
         return false;  // 键不存在
     }
     // 复制索引项（释放锁后仍可使用）
     kv_index_entry_t entry = node->entry;
-    pthread_rwlock_unlock(&db->index_lock);
+    kv_rwlock_unlock_rd(&db->index_lock);
 
     // ==================== 从磁盘读取 ====================
     // 获取文件描述符用于 pread
@@ -870,7 +870,7 @@ bool kv_get(kv_db_t *db, const char *key, kv_value_t *value) {
  * @see kv_set() - 设置键值对
  */
 bool kv_delete(kv_db_t *db, const char *key) {
-    pthread_rwlock_wrlock(&db->index_lock);
+    kv_rwlock_wrlock(&db->index_lock);
     
     index_node_t *node;
     HASH_FIND_STR(db->index, key, node);
@@ -879,12 +879,12 @@ bool kv_delete(kv_db_t *db, const char *key) {
         HASH_DEL(db->index, node);
         free(node->key);
         free(node);
-        pthread_rwlock_unlock(&db->index_lock);
+        kv_rwlock_unlock_wr(&db->index_lock);
         // 注意：简化版未向磁盘写入墓碑 (tombstone) 记录
         return true;
     }
     
-    pthread_rwlock_unlock(&db->index_lock);
+    kv_rwlock_unlock_wr(&db->index_lock);
     return false;  // 键不存在
 }
 
@@ -968,7 +968,7 @@ bool kv_begin(kv_db_t *db) {
 bool kv_commit(kv_db_t *db) {
     if (!db->in_transaction) return false;
     
-    pthread_mutex_lock(&db->write_lock);
+    kv_mutex_lock(&db->write_lock);
     txn_buffer_t *txn = (txn_buffer_t*)db->txn_log;
     txn_node_t *curr = txn->head;
     bool success = true;
@@ -994,7 +994,7 @@ bool kv_commit(kv_db_t *db) {
     free(txn);
     db->txn_log = NULL;
     db->in_transaction = false;
-    pthread_mutex_unlock(&db->write_lock);
+    kv_mutex_unlock(&db->write_lock);
     
     return success;
 }
@@ -1091,7 +1091,7 @@ bool kv_batch_set(kv_db_t *db, kv_pair_t *pairs, size_t count) {
  * @note 使用 system("cp") 命令，依赖 Unix 环境
  */
 bool kv_backup(kv_db_t *db, const char *backup_path) {
-    pthread_mutex_lock(&db->write_lock);
+    kv_mutex_lock(&db->write_lock);
     
     // 刷盘确保数据完整
     fflush(db->active_file);
@@ -1101,12 +1101,16 @@ bool kv_backup(kv_db_t *db, const char *backup_path) {
     char active_path[1024];
     snprintf(active_path, sizeof(active_path), "%s/active.dat", db->path);
     
-    // 执行复制命令
+    // 执行复制命令（处理跨平台差异）
     char cmd[2048];
-    snprintf(cmd, sizeof(cmd), "cp %s %s", active_path, backup_path);
+#ifdef _WIN32
+    snprintf(cmd, sizeof(cmd), "copy /y \"%s\" \"%s\"", active_path, backup_path);
+#else
+    snprintf(cmd, sizeof(cmd), "cp \"%s\" \"%s\"", active_path, backup_path);
+#endif
     int res = system(cmd);
     
-    pthread_mutex_unlock(&db->write_lock);
+    kv_mutex_unlock(&db->write_lock);
     return res == 0;
 }
 
@@ -1124,7 +1128,7 @@ bool kv_backup(kv_db_t *db, const char *backup_path) {
  * @note 恢复后需要重新扫描文件重建索引（简化版未实现）
  */
 bool kv_restore(kv_db_t *db, const char *backup_path) {
-    pthread_mutex_lock(&db->write_lock);
+    kv_mutex_lock(&db->write_lock);
     
     // 关闭当前文件
     fclose(db->active_file);
@@ -1133,16 +1137,20 @@ bool kv_restore(kv_db_t *db, const char *backup_path) {
     char active_path[1024];
     snprintf(active_path, sizeof(active_path), "%s/active.dat", db->path);
     
-    // 执行复制命令
+    // 执行复制命令（处理跨平台差异）
     char cmd[2048];
-    snprintf(cmd, sizeof(cmd), "cp %s %s", backup_path, active_path);
+#ifdef _WIN32
+    snprintf(cmd, sizeof(cmd), "copy /y \"%s\" \"%s\"", backup_path, active_path);
+#else
+    snprintf(cmd, sizeof(cmd), "cp \"%s\" \"%s\"", backup_path, active_path);
+#endif
     int res = system(cmd);
     
     // 重新打开文件
     db->active_file = fopen(active_path, "ab+");
     // 恢复后需要重新扫描文件以重建索引（简化版未重复编写扫描代码）
     
-    pthread_mutex_unlock(&db->write_lock);
+    kv_mutex_unlock(&db->write_lock);
     return res == 0;
 }
 

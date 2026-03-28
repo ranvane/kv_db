@@ -90,7 +90,11 @@ void test_transactions() {
 }
 
 int main() {
+#ifdef _WIN32
+    system("if exist test_db rd /s /q test_db");
+#else
     system("rm -rf ./test_db");
+#endif
     test_basic_crud();
     test_persistence();
     test_transactions();

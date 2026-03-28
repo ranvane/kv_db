@@ -58,7 +58,7 @@ jobs:
           
           # 3. Windows 下确保编译环境能找到 zlib
           # cibuildwheel 默认不完全继承系统环境变量，需显式传递
-          CIBW_ENVIRONMENT_WINDOWS: "INCLUDE='$VCPKG_INSTALLATION_ROOT\\installed\\x64-windows\\include' LIB='$VCPKG_INSTALLATION_ROOT\\installed\\x64-windows\\lib'"
+          CIBW_ENVIRONMENT_WINDOWS: "INCLUDE='$VCPKG_INSTALLATION_ROOT/installed/x64-windows/include' LIB='$VCPKG_INSTALLATION_ROOT/installed/x64-windows/lib'"
 
       # 上传构建好的 .whl 文件作为临时产物
       - uses: actions/upload-artifact@v4
