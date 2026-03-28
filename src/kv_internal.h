@@ -46,7 +46,14 @@ typedef struct kv_db {
     /* 持久化配置与状态 */
     uint32_t persist_time_sec;      // 自动同步的时间间隔（秒）
     size_t persist_size_threshold;  // 自动同步的数据量阈值（字节）
-    atomic_size_t unpersisted_size; // 自上次同步以来未写入磁盘的数据量计数
+
+    // 修复：确保 atomic_size_t 已定义
+    #ifdef _MSC_VER
+    volatile size_t unpersisted_size;  // MSVC 兼容写法
+    #else
+    atomic_size_t unpersisted_size;    // 标准 C11
+    #endif
+
     time_t last_persist_time;       // 上次执行同步操作的时间戳
 
     /* 并发控制与事务支持 */
