@@ -31,7 +31,6 @@
 #include "kv_store.h"
 #include "kv_internal.h"
 #include "uthash.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -669,10 +668,20 @@ static bool kv_set_internal(kv_db_t *db, const char *key, kv_value_t value) {
     if (!node) {
         // 键不存在，创建新节点
         node = malloc(sizeof(index_node_t));
+        if (!node) {
+            kv_rwlock_unlock_wr(&db->index_lock);
+            goto fail;
+        }
         node->key = strdup(key);
+        if (!node->key) {
+            free(node);
+            kv_rwlock_unlock_wr(&db->index_lock);
+            goto fail;
+        }
         HASH_ADD_KEYPTR(hh, db->index, node->key, strlen(node->key), node);
     }
     // 更新索引项（覆盖旧的位置信息）
+    node->entry.file_id = 0;  // 单文件模式，固定为 0
     node->entry.offset = offset;
     node->entry.size = sizeof(header) + key_len + write_len;
     node->entry.timestamp = header.timestamp;
