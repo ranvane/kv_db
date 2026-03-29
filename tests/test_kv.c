@@ -96,7 +96,11 @@ void test_transactions() {
 }
 
 int main() {
+#ifdef _WIN32
+    (void)system("rd /s /q .\\test_db >nul 2>nul");
+#else
     (void)system("rm -rf ./test_db");
+#endif
     test_basic_crud();
     test_persistence();
     test_transactions();

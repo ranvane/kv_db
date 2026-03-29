@@ -2,14 +2,14 @@
 
 [中文版文档 (Chinese Version)](README_CN.md)
 
-A high-performance, single-machine key-value database system implemented in C with a Python API wrapper. It features LSM-tree like append-only storage, in-memory indexing (Bitcask model), ACID transactions, and full POSIX support.
+A high-performance, single-machine key-value database system implemented in C with a Python API wrapper. It features LSM-tree like append-only storage, in-memory indexing (Bitcask model), ACID transactions, and cross-platform support.
 
-**Note: This project currently only supports POSIX-compatible systems (e.g., Linux and macOS).**
+**Supported Platforms: Linux, macOS, Windows (via MinGW)**
 
 ## Core Features
+- **Cross-Platform Compatibility**: Supports Linux, macOS, and Windows (MinGW) using native locks and atomic operations for high performance.
 - **High-Performance Engine**: Append-only log storage ensures sequential disk I/O.
 - **In-Memory Indexing**: Fast O(1) lookups using a hash table (`uthash`).
-- **POSIX Standard**: Fully implemented based on POSIX standard interfaces (pthread, stdatomic, pread, etc.).
 - **ACID Transactions**: Atomic operations with `begin`, `commit`, and `rollback`.
 - **Data Compression**: Integrated zlib compression for efficient storage.
 - **Python Bindings**: Simple dictionary-like interface supporting native Python types.
@@ -20,6 +20,7 @@ A high-performance, single-machine key-value database system implemented in C wi
 ### 1. Prerequisites
 - **Linux**: `sudo apt-get install zlib1g-dev`
 - **macOS**: `brew install zlib`
+- **Windows (MinGW)**: `pacman -S mingw-w64-x86_64-zlib`
 
 ### 2. Install via Wheel
 ```bash
@@ -54,9 +55,6 @@ db.close()
 
 ## CI/CD with GitHub Actions
 The project uses GitHub Actions for automated workflows:
-1. **Multi-Platform Build**: Parallel compilation on Linux and macOS.
+1. **Multi-Platform Build**: Parallel compilation on Linux, macOS, and Windows (MinGW).
 2. **Automated Testing**: Runs C unit tests and Python stress tests.
 3. **Automated Release**: Uploads built Wheels to GitHub Releases on tag pushes.
-
-## Contributing
-Issues and Pull Requests are welcome! Please ensure your code adheres to POSIX standards and maintains cross-platform (Linux/macOS) compatibility.

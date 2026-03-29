@@ -20,8 +20,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # 仅在 Linux 和 macOS 上运行，移除 Windows 支持
-        os: [ubuntu-latest, macos-latest]
+        # 启用 Linux, macOS 和 Windows 支持
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -32,6 +32,17 @@ jobs:
         with:
           python-version: '3.11'
 
+      # 在 Windows 上设置 MinGW 编译器环境，用于替代默认的 MSVC
+      - name: Set up MinGW (Windows only)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-zlib
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -41,13 +52,35 @@ jobs:
         run: python -m cibuildwheel --output-dir wheelhouse
         env:
           # CIBW 配置说明：
-          # 1. 忽略不常用的架构
-          CIBW_SKIP: "*-win* *_i686 *_s390x *_ppc64le"
+          # 1. 忽略 32 位和不常用的架构，仅保留 64 位以简化编译
+          CIBW_SKIP: "*_i686 *_s390x *_ppc64le"
           
-          # 2. 编译前的前置操作：在 Linux 容器中安装 zlib 开发库
+          # 2. 编译前的前置操作：
+          # Linux: 安装 zlib 开发库
           CIBW_BEFORE_ALL_LINUX: "yum install -y zlib-devel || apk add zlib-dev || apt-get install -y zlib1g-dev"
           
-          # 3. 测试配置：在每个生成的 Wheel 上运行测试
+          # Windows: 
+          # - 确保安装 setuptools
+          # - 配置 distutils 使用 mingw32 编译器 (强制覆盖 MSVC)
+          CIBW_BEFORE_BUILD_WINDOWS: |
+            pip install setuptools
+            echo [build] > %PYTHON_PREFIX%\Lib\distutils\distutils.cfg
+            echo compiler=mingw32 >> %PYTHON_PREFIX%\Lib\distutils\distutils.cfg
+          
+          # 设置编译环境变量
+          # - 将 MinGW 路径加入 PATH (使用单反斜杠，YAML 摺叠块会自动处理)
+          # - 指定编译器为 gcc
+          # - 指定 zlib 的头文件和库文件路径 (针对 MinGW 环境)
+          CIBW_ENVIRONMENT_WINDOWS: >-
+            PATH="C:\msys64\mingw64\bin;$PATH" 
+            CC=gcc 
+            CXX=g++ 
+            CPATH="C:\msys64\mingw64\include" 
+            LIBRARY_PATH="C:\msys64\mingw64\lib"
+          
+          CIBW_BUILD_FRONTEND: "build"
+          
+          # 3. 测试配置：在每个生成的 Wheel 上运行测试，确保 C 扩展加载成功
           CIBW_TEST_COMMAND: "python {project}/tests/test_python.py"
 
       # 上传构建好的 .whl 文件作为临时产物
