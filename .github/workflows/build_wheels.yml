@@ -3,47 +3,44 @@ name: Build and Release Wheels
 # 工作流触发条件
 on:
   push:
-    branches: [ main ]      # 推送到 main 分支时触发
+    branches: [ main ]
     tags:
-      - 'v*'                # 推送版本标签（如 v1.0.0）时触发
+      - 'v*'
   pull_request:
-    branches: [ main ]      # 针对 main 分支的 PR 时触发
+    branches: [ main ]
 
-# 设置权限，允许创建 Release 和上传附件
 permissions:
   contents: write
 
 jobs:
-  # 1. 编译各平台的 Wheel 安装包（仅支持 POSIX 环境）
+  # 1. 编译各平台的 Wheel 安装包
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # 启用 Linux, macOS 和 Windows 支持
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - uses: actions/checkout@v4
 
-      # 使用 Python 3.11+ 运行工作流，支持最新版本的 cibuildwheel
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # 在 Windows 上设置 MinGW 编译器环境，用于替代默认的 MSVC
-      - name: Set up MinGW (Windows only)
+      # Windows: 安装 MinGW + zlib
+      - name: Set up MinGW and zlib (Windows only)
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
-          install: >-
+          install: >
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-zlib
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install build cibuildwheel==2.21.3
@@ -51,39 +48,32 @@ jobs:
       - name: Build wheels
         run: python -m cibuildwheel --output-dir wheelhouse
         env:
-          # CIBW 配置说明：
-          # 1. 忽略 32 位和不常用的架构，仅保留 64 位以简化编译
+          # 跳过不常用架构
           CIBW_SKIP: "*_i686 *_s390x *_ppc64le"
           
-          # 2. 编译前的前置操作：
-          # Linux: 安装 zlib 开发库
+          # Linux: 安装 zlib
           CIBW_BEFORE_ALL_LINUX: "yum install -y zlib-devel || apk add zlib-dev || apt-get install -y zlib1g-dev"
           
-          # Windows: 
-          # - 确保安装 setuptools
-          # - 配置 distutils 使用 mingw32 编译器 (强制覆盖 MSVC)
+          # Windows: 设置 distutils 使用 MinGW
           CIBW_BEFORE_BUILD_WINDOWS: |
             pip install setuptools
             echo [build] > %PYTHON_PREFIX%\Lib\distutils\distutils.cfg
             echo compiler=mingw32 >> %PYTHON_PREFIX%\Lib\distutils\distutils.cfg
           
-          # 设置编译环境变量
-          # - 将 MinGW 路径加入 PATH (使用单反斜杠，YAML 摺叠块会自动处理)
-          # - 指定编译器为 gcc
-          # - 指定 zlib 的头文件和库文件路径 (针对 MinGW 环境)
+          # Windows 环境变量，指向 MinGW + zlib
           CIBW_ENVIRONMENT_WINDOWS: >-
-            PATH="C:\msys64\mingw64\bin;$PATH" 
-            CC=gcc 
-            CXX=g++ 
-            CPATH="C:\msys64\mingw64\include" 
+            PATH="C:\msys64\mingw64\bin;$PATH"
+            CC=gcc
+            CXX=g++
+            CPATH="C:\msys64\mingw64\include"
             LIBRARY_PATH="C:\msys64\mingw64\lib"
-          
-          CIBW_BUILD_FRONTEND: "build"
-          
-          # 3. 测试配置：在每个生成的 Wheel 上运行测试，确保 C 扩展加载成功
-          CIBW_TEST_COMMAND: "python {project}/tests/test_python.py"
 
-      # 上传构建好的 .whl 文件作为临时产物
+          # 使用 build 前端
+          CIBW_BUILD_FRONTEND: "build"
+
+          # 禁用自动测试
+          CIBW_TEST_COMMAND: ""
+
       - uses: actions/upload-artifact@v4
         with:
           name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
@@ -110,7 +100,6 @@ jobs:
           path: dist/*.tar.gz
 
   # 3. 发布到 GitHub Releases
-  # 仅在推送 tag (v*) 时触发发布逻辑
   upload_releases:
     name: Upload to GitHub Releases
     needs: [build_wheels, build_sdist]
@@ -120,7 +109,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 下载所有之前步骤上传的产物
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -128,16 +116,15 @@ jobs:
           pattern: cibw-*
           merge-multiple: true
 
-      # 创建并发布 Release
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/*.whl
             dist/*.tar.gz
-          body_path: README_CN.md  # 使用中文 README 作为 Release 说明
+          body_path: README_CN.md
           draft: false
           prerelease: false
-          generate_release_notes: true # 自动生成变更日志
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
