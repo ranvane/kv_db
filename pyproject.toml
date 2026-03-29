@@ -16,6 +16,8 @@ classifiers = [
     "Programming Language :: C",
     "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
     "Topic :: Database",
 ]
 dependencies = []
