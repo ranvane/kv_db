@@ -51,8 +51,10 @@ void test_persistence() {
     // Reopen and check
     db = kv_open("./test_db");
     kv_value_t get_val;
-    assert(kv_get(db, "persist_key", &get_val));
+    bool found = kv_get(db, "persist_key", &get_val);
+    assert(found);
     assert(get_val.value.i == 999);
+    (void)found; // Avoid unused variable warning if assert is empty
     kv_close(db);
     printf("Persistence: OK\n\n");
 }
@@ -71,10 +73,12 @@ void test_transactions() {
     
     // Not committed yet, should not be in DB (except in txn log)
     kv_value_t get_val;
-    assert(!kv_get(db, "txn_key1", &get_val));
+    bool found = kv_get(db, "txn_key1", &get_val);
+    assert(!found);
     
     kv_commit(db);
-    assert(kv_get(db, "txn_key1", &get_val));
+    found = kv_get(db, "txn_key1", &get_val);
+    assert(found);
     assert(get_val.value.i == 1);
     
     kv_begin(db);
@@ -82,19 +86,17 @@ void test_transactions() {
     kv_set(db, "txn_key1", val);
     kv_rollback(db);
     
-    assert(kv_get(db, "txn_key1", &get_val));
+    found = kv_get(db, "txn_key1", &get_val);
+    assert(found);
     assert(get_val.value.i == 1); // Should still be 1
     
+    (void)found;
     kv_close(db);
     printf("Transactions: OK\n\n");
 }
 
 int main() {
-#ifdef _WIN32
-    system("if exist test_db rd /s /q test_db");
-#else
-    system("rm -rf ./test_db");
-#endif
+    (void)system("rm -rf ./test_db");
     test_basic_crud();
     test_persistence();
     test_transactions();

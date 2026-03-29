@@ -409,7 +409,7 @@ kv_db_t* kv_open(const char *path) {
 
     // ==================== 创建数据库目录 ====================
     // 创建目录（如不存在），权限 0755（rwxr-xr-x）
-    mkdir(path, 0755);
+    kv_mkdir(path, 0755);
 
     // ==================== 打开数据文件 ====================
     // 构建数据文件路径：{path}/active.dat
@@ -552,7 +552,7 @@ void kv_close(kv_db_t *db) {
     // 刷新 stdio 缓冲区到内核缓冲区
     fflush(db->active_file);
     // 强制内核缓冲区写入磁盘
-    fsync(fileno(db->active_file));
+    kv_fsync(kv_fileno(db->active_file));
     // 关闭文件句柄
     fclose(db->active_file);
 
@@ -648,16 +648,16 @@ static bool kv_set_internal(kv_db_t *db, const char *key, kv_value_t value) {
     // 更新当前偏移量
     db->current_offset += sizeof(header) + key_len + write_len;
     // 累加未持久化数据量
-    db->unpersisted_size += sizeof(header) + key_len + write_len;
+    kv_atomic_add(&db->unpersisted_size, (long long)(sizeof(header) + key_len + write_len));
 
     // ==================== 检查持久化触发 ====================
     time_t now = time(NULL);
     // 触发条件：数据量超过阈值 或 时间超过间隔
-    if (db->unpersisted_size >= db->persist_size_threshold || 
+    if (kv_atomic_load(&db->unpersisted_size) >= (long long)db->persist_size_threshold || 
         (now - db->last_persist_time) >= db->persist_time_sec) {
         fflush(db->active_file);
-        fsync(fileno(db->active_file));
-        db->unpersisted_size = 0;
+        kv_fsync(kv_fileno(db->active_file));
+        kv_atomic_store(&db->unpersisted_size, 0);
         db->last_persist_time = now;
     }
 
@@ -811,13 +811,13 @@ bool kv_get(kv_db_t *db, const char *key, kv_value_t *value) {
 
     // ==================== 从磁盘读取 ====================
     // 获取文件描述符用于 pread
-    int fd = fileno(db->active_file);
+    int fd = kv_fileno(db->active_file);
     // 刷新 stdio 缓冲区，确保 pread 能读到最新数据
     fflush(db->active_file);
     
     // 读取记录头
     kv_record_header_t header;
-    if (pread(fd, &header, sizeof(header), entry.offset) != sizeof(header)) {
+    if (kv_pread(fd, &header, sizeof(header), (long long)entry.offset) != sizeof(header)) {
         return false;
     }
 
@@ -825,8 +825,8 @@ bool kv_get(kv_db_t *db, const char *key, kv_value_t *value) {
     uint8_t *read_buf = malloc(header.val_len);
     if (!read_buf) return false;
     
-    if (pread(fd, read_buf, header.val_len, 
-              entry.offset + sizeof(header) + header.key_len) != header.val_len) {
+    if (kv_pread(fd, read_buf, header.val_len, 
+              (long long)(entry.offset + sizeof(header) + header.key_len)) != (ssize_t)header.val_len) {
         free(read_buf);
         return false;
     }
@@ -1099,21 +1099,19 @@ bool kv_batch_set(kv_db_t *db, kv_pair_t *pairs, size_t count) {
 bool kv_backup(kv_db_t *db, const char *backup_path) {
     kv_mutex_lock(&db->write_lock);
     
-    // 刷盘确保数据完整
+    // ==================== 强制刷盘同步 ====================
+    // 刷新 stdio 缓冲区到内核缓冲区
     fflush(db->active_file);
-    fsync(fileno(db->active_file));
+    // 强制内核缓冲区写入磁盘
+    kv_fsync(kv_fileno(db->active_file));
     
     // 构建源文件路径
     char active_path[1024];
     snprintf(active_path, sizeof(active_path), "%s/active.dat", db->path);
     
-    // 执行复制命令（处理跨平台差异）
+    // 执行复制命令
     char cmd[2048];
-#ifdef _WIN32
-    snprintf(cmd, sizeof(cmd), "copy /y \"%s\" \"%s\"", active_path, backup_path);
-#else
     snprintf(cmd, sizeof(cmd), "cp \"%s\" \"%s\"", active_path, backup_path);
-#endif
     int res = system(cmd);
     
     kv_mutex_unlock(&db->write_lock);
@@ -1143,13 +1141,9 @@ bool kv_restore(kv_db_t *db, const char *backup_path) {
     char active_path[1024];
     snprintf(active_path, sizeof(active_path), "%s/active.dat", db->path);
     
-    // 执行复制命令（处理跨平台差异）
+    // 执行复制命令
     char cmd[2048];
-#ifdef _WIN32
-    snprintf(cmd, sizeof(cmd), "copy /y \"%s\" \"%s\"", backup_path, active_path);
-#else
     snprintf(cmd, sizeof(cmd), "cp \"%s\" \"%s\"", backup_path, active_path);
-#endif
     int res = system(cmd);
     
     // 重新打开文件

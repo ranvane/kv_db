@@ -14,14 +14,14 @@ permissions:
   contents: write
 
 jobs:
-  # 1. 编译各平台的 Wheel 安装包
+  # 1. 编译各平台的 Wheel 安装包（仅支持 POSIX 环境）
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # 在 Linux, Windows, macOS 三个操作系统上并行运行
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # 仅在 Linux 和 macOS 上运行，移除 Windows 支持
+        os: [ubuntu-latest, macos-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -32,15 +32,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      # Windows 下通过 vcpkg 安装 zlib
-      - name: Install zlib (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          vcpkg install zlib:x64-windows
-          # 将 vcpkg 安装路径添加到系统环境变量，以便 setup.py 能够找到 zlib.lib 和 zlib.h
-          echo "INCLUDE=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\include" >> $GITHUB_ENV
-          echo "LIB=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib" >> $GITHUB_ENV
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -50,15 +41,14 @@ jobs:
         run: python -m cibuildwheel --output-dir wheelhouse
         env:
           # CIBW 配置说明：
-          # 1. 忽略不常用的架构，只构建主流 64 位版本，加快构建速度
-          CIBW_SKIP: "*-win32 *_i686 *_s390x *_ppc64le"
+          # 1. 忽略不常用的架构
+          CIBW_SKIP: "*-win* *_i686 *_s390x *_ppc64le"
           
-          # 2. Linux 下安装 zlib 依赖
+          # 2. 编译前的前置操作：在 Linux 容器中安装 zlib 开发库
           CIBW_BEFORE_ALL_LINUX: "yum install -y zlib-devel || apk add zlib-dev || apt-get install -y zlib1g-dev"
           
-          # 3. Windows 下确保编译环境能找到 zlib
-          # cibuildwheel 默认不完全继承系统环境变量，需显式传递
-          CIBW_ENVIRONMENT_WINDOWS: "INCLUDE='$VCPKG_INSTALLATION_ROOT/installed/x64-windows/include' LIB='$VCPKG_INSTALLATION_ROOT/installed/x64-windows/lib'"
+          # 3. 测试配置：在每个生成的 Wheel 上运行测试
+          CIBW_TEST_COMMAND: "python {project}/tests/test_python.py"
 
       # 上传构建好的 .whl 文件作为临时产物
       - uses: actions/upload-artifact@v4

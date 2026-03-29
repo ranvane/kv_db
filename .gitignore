@@ -212,3 +212,5 @@ stress_test_db
 test_db/active.dat
 src/kv_store.o
 libkvdb.so
+.lingma
+obj
