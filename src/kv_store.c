@@ -28,8 +28,8 @@
  * @date 2024
  */
 
-#include "kv_store.h"
 #include "kv_internal.h"
+#include "kv_store.h"
 #include "uthash.h"
 #include <stdlib.h>
 #include <string.h>

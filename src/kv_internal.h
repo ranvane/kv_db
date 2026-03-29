@@ -1,6 +1,13 @@
 #ifndef KV_INTERNAL_H
 #define KV_INTERNAL_H
 
+/* 特性测试宏必须在包含任何系统头文件之前定义 */
+#ifndef _WIN32
+    #ifndef _POSIX_C_SOURCE
+        #define _POSIX_C_SOURCE 200809L
+    #endif
+#endif
+
 #include "kv_store.h"
 #include <stdio.h>
 
@@ -72,9 +79,6 @@
     #define kv_sleep_ms(ms) Sleep(ms)
 
 #else
-    #ifndef _POSIX_C_SOURCE
-        #define _POSIX_C_SOURCE 200809L
-    #endif
     #include <stdatomic.h>
     #include <pthread.h>
     #include <unistd.h>
